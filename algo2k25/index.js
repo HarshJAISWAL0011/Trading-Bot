@@ -74,7 +74,8 @@ export async function monitorPrices() {
                         continue;
                     }
                 } else {
-                    continue; // Not enough history yet
+                    sendLogs(`${prefix(market)} No enough data, but continuing....`);
+                    // continue; // Not enough history yet
                 }
 
                 phaseOneCandidates[market] = {
