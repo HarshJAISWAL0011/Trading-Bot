@@ -37,20 +37,20 @@ async function matchTimeAndStart() {
     const min = istDate.getMinutes();
     const sec = istDate.getSeconds();
 
-    console.log(`🕒 Current IST time: ${istDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`);
+    console.log(`🕒 Current IST time: ${istDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}, min: ${min}`);
 
 
     if(min >= 40){
-        await sleep((60 - min - 1) * 1000 * 60);
+        await sleep((60 - min) * 1000 * 60);
         await monitorPrices();
-        setInterval(monitorPrices,2*60*60*1000); //Make request in every 2 hrs
+        setInterval(monitorPrices,1.3*60*60*1000); //Make request in every 2 hrs
         setInterval(manageBoughtCoins, 60*1000); // 1 min
         setInterval(checkReboundCandidates, 25*60*1000);// 25 min
     }else{
         await monitorPrices();
-        await sleep((60 - min - 1) * 1000 * 60) // Make sure to handle checkReboundCandidates & manageBoughtCoins on db edit
+        await sleep((60 - min) * 1000 * 60) // Make sure to handle checkReboundCandidates & manageBoughtCoins on db edit
         await monitorPrices();
-        setInterval(monitorPrices, 2*60*60*1000); //Make request in every 2 hrs
+        setInterval(monitorPrices, 1.3*60*60*1000); //Make request in every 2 hrs
         setInterval(manageBoughtCoins, 60*1000); // 1 min
         setInterval(checkReboundCandidates, 25*60*1000);// 25 min
     }

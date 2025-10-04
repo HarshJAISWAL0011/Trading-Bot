@@ -18,13 +18,14 @@ export function sendLogs(logMsg) {
     const currentDate = new Date();
     const dateKey = formatDateKey(currentDate);
     console.log(`logMsg ${logMsg}`)
+    let finalLog =`${logMsg} <---)`
   
     const db = getDatabase();
     const logsRef = ref(db, `logs/${dateKey}`);
 
     const newLogRef = push(logsRef);
 
-    set(newLogRef, logMsg)
+    set(newLogRef, finalLog)
         .catch((error) => {
             console.error('Error storing log message:', error);
         });

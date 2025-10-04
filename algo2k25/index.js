@@ -2,7 +2,7 @@ import axios from "axios";
 import { baseurl, publicbaseurl, ticker, market_details } from "../Constant.js";
 import { sendEmail } from "../Email.js";
 import { sendLogs, storeLog } from "../firebase.js";
-import { prefix } from "../hike.js";
+import { prefix, getNowDate, getTime } from "../hike.js";
 
 // Cache memory
 let cachedPrices = {};                 // { "B-BTC_USDT": 24000 }
@@ -28,7 +28,7 @@ async function fetchAllPrices() {
 // Check if market is on cooldown
 function isOnCooldown(market) {
     if (!cooldowns[market]) return false;
-    return Date.now() - cooldowns[market] < COOLDOWN_MS;
+    return getNowDate() - cooldowns[market] < COOLDOWN_MS;
 }
 
 // Main monitor function
@@ -94,16 +94,17 @@ export async function monitorPrices() {
 
                 const secondHikePercent = ((last_price - candidate.basePrice) / candidate.basePrice) * 100;
 
-                if (secondHikePercent >= 15 && !phaseTwoAlerts[market]) {
+                if (secondHikePercent >= 15 ) {
+
                     let notes = `${candidate.notes}\nFirst pass price: ${candidate.basePrice}\nSecond pass price: ${last_price}`
                     if (secondHikePercent > 75){
                         notes = `\nHike of: ${secondHikePercent} looks a fluctuating coin`
                     }
                     phaseTwoAlerts[market] = {
                         entryPrice: last_price,
-                        dropHistory: [last_price],
+                        dropHistory: [[last_price, getTime()]],
                         lowestPrice: last_price,
-                        startTime: Date.now(),
+                        startTime: getNowDate(),
                         notes: notes
                     };
                     sendLogs(`${prefix(market)} ⚡ ALERT: ${market} moved to PhaseTwo`);
@@ -111,22 +112,23 @@ export async function monitorPrices() {
                 } else if (candidate.attempts >= 3) {
                     // If 3 chances are done and no 5% hike → drop it
                     delete phaseOneCandidates[market];
-                    sendLogs(`${prefix(market)} ℹ️ Dropped ${market} from PhaseOne after 3 attempts without 5% hike`);
+                    sendLogs(`${prefix(market)} ℹ️ Dropped ${market} from PhaseOne after 3 attempts without 15% hike`);
                 }
             }
 
             // Track red candle for phaseTwoAlerts
             if (phaseTwoAlerts[market] ) {
                 const entry = phaseTwoAlerts[market];
-                entry.dropHistory.push(last_price);
+                entry.dropHistory.push([last_price, getTime()]);
                 if (entry.dropHistory.length > 3) entry.dropHistory.shift();
 
                 let consecutiveRedCandle = 0;
                 let totalDrop = 0;
                 let foundConsecutiveRedCandle = false
+                sendLogs(`${prefix(market)} ${market} dropHistory: ${entry.dropHistory}`)
                 for (let i = 1; i < entry.dropHistory.length; i++) {
-                    const prev = entry.dropHistory[i - 1];
-                    const curr = entry.dropHistory[i];
+                    const prev = entry.dropHistory[i - 1][0]; // last_price
+                    const curr = entry.dropHistory[i][0]; // last_price
                     const dropPercent = ((prev - curr) / prev) * 100;
 
                     if (dropPercent > 0) {
@@ -136,28 +138,28 @@ export async function monitorPrices() {
                             foundConsecutiveRedCandle = true
                             if (totalDrop >= 5) {
                                 let newNote = entry.notes
-                                newNote += `\ndropHistory prices: ${entry.dropHistory}`
+                                newNote += `\ndropHistory prices: ${entry.dropHistory}\nRed candle: Ok at ${getTime()} @ ${curr} with drop percent: ${dropPercent}`
 
-                                reboundWatchlist[market] = { market, startTime: Date.now(), notes: newNote };
+                                reboundWatchlist[market] = { market, startTime: getNowDate(), lowestPrice: last_price, notes: newNote };
                                 delete phaseTwoAlerts[market];
                                 sendLogs(`${prefix(market)} 📉 ${market} moved to reboundWatchlist after 2 consecutive red candles`);
                                 break;
                             } else {
-                                if (Date.now() - entry.startTime > 1000 * 60 * 60 * 10) { // 10 hours
+                                if (getNowDate() - entry.startTime > 1000 * 60 * 60 * 10) { // 10 hours
                                     sendLogs(`${prefix(market)} 📉 ${market}: Waiting from 10hrs. No rebound. Dropping coin`);
                                     delete phaseTwoAlerts[market]
                                 }
                             }
                         } else {
-                            if (Date.now() - entry.startTime > 1000 * 60 * 60 * 10) { // 10 hours
-                                sendLogs(`${prefix(market)} 📉 ${market}:: Waiting from 10hrs. No rebound. Dropping coin`);
+                            if (getNowDate() - entry.startTime > 1000 * 60 * 60 * 10) { // 10 hours
+                                sendLogs(`${prefix(market)} 📉 ${market}: Waiting from 10hrs. No rebound. Dropping coin`);
                                 delete phaseTwoAlerts[market]
                             }
                         }
                     } else {
                         consecutiveRedCandle = 0; // reset if not a red candle
-                        if (Date.now() - entry.startTime > 1000 * 60 * 60 * 10) { // 10 hours
-                            sendLogs(`${prefix(market)} 📉 ${market}::: Waiting from 10hrs. No rebound. Dropping coin`);
+                        if (getNowDate() - entry.startTime > 1000 * 60 * 60 * 10) { // 10 hours
+                            sendLogs(`${prefix(market)} 📉 ${market}: Waiting from 10hrs. No rebound. Dropping coin`);
                             delete phaseTwoAlerts[market]
                         }
                     }
@@ -175,9 +177,9 @@ export async function monitorPrices() {
 export async function checkReboundCandidates() {
     try {
         if (Object.keys(reboundWatchlist).length === 0) return;
-        sendLogs(`${prefix(market)} reboundWatchlist: ${JSON.stringify(reboundWatchlist)}`)
+        sendLogs(`${prefix("market")} reboundWatchlist: ${JSON.stringify(reboundWatchlist)}`)
         const  latestData  = await fetchAllPrices()
-        const now = Date.now();
+        const now = getNowDate();
 
         for (const market in reboundWatchlist) {
             const alert = reboundWatchlist[market];
@@ -216,9 +218,10 @@ export async function checkReboundCandidates() {
 export async function manageBoughtCoins() {
     try {
         if (Object.keys(boughtCoins).length === 0) return;
-        sendLogs(`${prefix(market)} boughtCoins: ${JSON.stringify(boughtCoins)}`)
+        sendLogs(`${prefix("boughtCoins")} boughtCoins: ${JSON.stringify(boughtCoins)}`)
         const prices = await fetchAllPrices();
 
+        var currTime = getNowDate();
         for (const coin of prices) {
             const { market, last_price } = coin;
             if (!boughtCoins[market]) continue;
@@ -238,11 +241,12 @@ export async function manageBoughtCoins() {
             }
 
             // Stop loss (≥15% drop in last 3 checks)
-            const maxSinceBuy = Math.max(...priceHistory);
-            const lossPercent = ((maxSinceBuy - last_price) / maxSinceBuy) * 100;
+            const lossPercent = (( boughtCoins[market].buyPrice - last_price) /  boughtCoins[market].buyPrice) * 100;
 
             if (lossPercent >= 15) {
                 sellCoin(market, last_price, "Stop Loss (≥15%)");
+           } else if (currTime - boughtCoins[market].boughtTime > 3 * 24 * 60 * 60 * 1000) { // 3 days
+                sellCoin(market, last_price, `Waited for 3 days. Selling with loss of ${lossPercent}`);
             }
         }
     } catch (err) {
@@ -254,13 +258,13 @@ export async function manageBoughtCoins() {
 function buyCoin(market, price, notes) {
     sendEmail(`🟢 BUY ${market} at ${price}\nNotes: ${notes}`)
     sendLogs(`${prefix(market)} 🟢 BUY ${market} at ${price}\nNotes: ${notes}`);
-    boughtCoins[market] = { buyPrice: price, priceHistory: [price] };
-    cooldowns[market] = Date.now(); // set cooldown
+    boughtCoins[market] = { buyPrice: price, priceHistory: [price], boughtTime: getNowDate() };
+    cooldowns[market] = getNowDate(); // set cooldown
 }
 
 function sellCoin(market, price, reason) {
     sendEmail(`🔴 SELL ${market} at ${price} (Reason: ${reason})`)
     sendLogs(`${prefix(market)} 🔴 SELL ${market} at ${price} (Reason: ${reason})`);
     delete boughtCoins[market];
-    cooldowns[market] = Date.now(); // set cooldown
+    cooldowns[market] = getNowDate(); // set cooldown
 }

@@ -569,6 +569,11 @@ export function getTime() {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+export function getNowDate(){
+   const nowUTC = new Date(); // Current UTC time
+  return new Date(new Date(nowUTC.getTime() + (5 * 60 + 30) * 60000)).getTime(); // Adding 5 hours and 30 minutes
+}
+
 async function isSingleMinHike(coinToMonitor) {
   const symbol=coinToMonitor.symbol;
   const hikeRecordedPerc=coinToMonitor.priceChangePercent;
