@@ -7,7 +7,7 @@ import { sendEmail, sendErrorMail } from "./Email.js";
 import {getCoinReadyToBuy} from "./short-term.js";
 import { suddenFallAlgo } from "./suddenfall.js";
 import { coinHiked, getTime } from "./hike.js";
-import { monitorPrices, manageBoughtCoins, checkReboundCandidates } from "./algo2k25/index.js";
+import { monitorPrices, manageBoughtCoins } from "./algo2k25/index.js";
 import fetch from 'node-fetch'; 
 import { sendLogs,runOnce,updatePriceHistoryInFirebase,initializePriceHistoryFromFirebase } from "./firebase.js";
 
@@ -45,14 +45,12 @@ async function matchTimeAndStart() {
         await monitorPrices();
         setInterval(monitorPrices,1.3*60*60*1000); //Make request in every 2 hrs
         setInterval(manageBoughtCoins, 60*1000); // 1 min
-        setInterval(checkReboundCandidates, 25*60*1000);// 25 min
     }else{
         await monitorPrices();
         await sleep((60 - min) * 1000 * 60) // Make sure to handle checkReboundCandidates & manageBoughtCoins on db edit
         await monitorPrices();
         setInterval(monitorPrices, 1.3*60*60*1000); //Make request in every 2 hrs
         setInterval(manageBoughtCoins, 60*1000); // 1 min
-        setInterval(checkReboundCandidates, 25*60*1000);// 25 min
     }
 }
 
