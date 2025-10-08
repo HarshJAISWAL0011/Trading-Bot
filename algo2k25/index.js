@@ -63,6 +63,7 @@ export async function monitorPrices() {
 
             // Step 1: ≥3.5% hike → move to first list
             if (hikePercent >= 3.5 && !phaseOneCandidates[market] && !phaseTwoAlerts[market] && !boughtCoins[market] && !reboundWatchlist[market]) {
+                clearNote(market)
                 if (volumeHistory[market].length === 3) {
                     let valid = true;
                     for (let i = 1; i < volumeHistory[market].length; i++) {
@@ -120,7 +121,7 @@ export async function monitorPrices() {
             if (phaseTwoAlerts[market] ) {
                 const entry = phaseTwoAlerts[market];
                 entry.dropHistory.push([last_price, getTime()]);
-                if (entry.dropHistory.length > 3) entry.dropHistory.shift();
+                if (entry.dropHistory.length > 10) entry.dropHistory.shift();
 
                 let consecutiveRedCandle = 0;
                 let totalDrop = 0;
@@ -141,7 +142,7 @@ export async function monitorPrices() {
                                 const formattedHistory = entry.dropHistory
                                         .map(([price, time]) => `${price} @ ${time}`)
                                         .join("  → "); 
-                                logAndNote(market, ` dropHistory: ${formattedHistory}\nRed candle: Ok at ${getTime()} @ ${curr} with drop percent: ${dropPercent}`)
+                                logAndNote(market, ` dropHistory: ${formattedHistory}\nRed candle: Ok at ${getTime()} @ ${last_price} (curr: ${curr}) with drop percent: ${dropPercent}`)
 
                                 reboundWatchlist[market] = { market, startTime: getNowDate(), lowestPrice: last_price };
                                 delete phaseTwoAlerts[market];
@@ -203,13 +204,19 @@ async function checkReboundCandidates(market) {
         sendLogs(`${prefix(market)} reboundWatchlist: ${JSON.stringify(reboundWatchlist)}`)
         const  latestData  = await fetchAllPrices()
         const now = getNowDate();
-        let reboundPercentThreshold = 1
+        let reboundPercentThreshold = 1.3
 
         const alert = reboundWatchlist[market];
         const coinData = latestData.find(c => c.market === market);
         if (!coinData) return; // Don't delete. May be Coindcx server is down
 
         const last_price = parseFloat(coinData.last_price);
+        
+        if (!alert.reboundHistory) {
+            alert.reboundHistory = [];
+        }
+
+        alert.reboundHistory.push([last_price, getTime()]);
 
         // track lowest point
         alert.lowestPrice = Math.min(alert.lowestPrice || last_price, last_price);
@@ -218,11 +225,17 @@ async function checkReboundCandidates(market) {
         const reboundPercent = ((last_price - alert.lowestPrice) / alert.lowestPrice) * 100;
 
         if(now - alert.startTime > 50 * 60 * 1000)// 50 min
-             reboundPercentThreshold = 1.5;
+             reboundPercentThreshold = 1.8;
 
         if (reboundPercent >= reboundPercentThreshold) {
             sendLogs(`${prefix(market)} 📈 Rebound detected for ${market}, buying at ${last_price}`);
             logAndNote(market, `Rebound percent: ${reboundPercent}, rebound price: ${last_price} from ${alert.lowestPrice}`)
+            const reboundHistoryText = alert.reboundHistory
+                                        .map(([price, time]) => `${price} @ ${time}`)
+                                        .join("  → "); 
+            logAndNote(market, `ReboundHistory: ${reboundHistoryText}`)
+            if(reboundPercentThreshold > 4)
+                logAndNote(market, "Not safe to buy. Rebound Percent is more than 4%")
             buyCoin(market, last_price);
 
             clearInterval(reboundScheduler[market])
@@ -271,7 +284,7 @@ export async function manageBoughtCoins() {
 
             // Take profit 
             if (profitPercent >= profitPercentThreshold) {
-                sellCoin(market, last_price, `Take Profit (${profitPercentThreshold}%)`);
+                sellCoin(market, last_price, `Take Profit (${profitPercent}%) with profitThreshold: ${profitPercentThreshold}`);
                 continue;
             }
 
@@ -284,7 +297,7 @@ export async function manageBoughtCoins() {
             }
 
             if (lossPercent >= lossPercentThreshold) {
-                sellCoin(market, last_price, "Stop Loss (≥10%)");
+                sellCoin(market, last_price, `Stop Loss (${lossPercent}%)`);
            } else if (currTime - boughtCoins[market].boughtTime > 3 * 24 * 60 * 60 * 1000) { // 3 days
                 sellCoin(market, last_price, `Waited for 3 days. Selling with loss of ${lossPercent}`);
             }
@@ -313,4 +326,8 @@ function sellCoin(market, price, reason) {
 function logAndNote(market, msg){
     sendLogs(`${prefix(market)} ${msg}`);
     notes[market]  = (notes[market] || "") + `${msg}\n`
+}
+
+function clearNote(market){
+    notes[market] = ""
 }
