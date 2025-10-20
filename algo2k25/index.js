@@ -124,6 +124,7 @@ export async function monitorPrices() {
                 if (entry.dropHistory.length > 10) entry.dropHistory.shift();
 
                 let consecutiveRedCandle = 0;
+                let consecutiveGreenCandle = 0;
                 let foundConsecutiveRedCandle = false
                 const enteredPrice = entry.dropHistory[0][0]
                 for (let i = 1; i < entry.dropHistory.length; i++) {
@@ -132,11 +133,13 @@ export async function monitorPrices() {
                     const dropPercent = ((prev - curr) / prev) * 100.0;
                     const startToNowDrop = ((enteredPrice - last_price) / enteredPrice) * 100.0;
 
+
                     if (dropPercent > 0) {
                         consecutiveRedCandle++;
+                        consecutiveGreenCandle = 0;// reset if not a green candle
                         if (consecutiveRedCandle >= 2 || foundConsecutiveRedCandle) {
                             foundConsecutiveRedCandle = true
-                            if (startToNowDrop >= 5.5) {
+                            if (startToNowDrop >= 12) {
                                 let maxDropAllowed = entry.topPrice - ( 0.7 *(entry.topPrice - entry.basePrice)) // 70% of base to highest price diff -> max allowed drop 
                                 if(last_price >= maxDropAllowed){
                                     const formattedHistory = entry.dropHistory
@@ -167,15 +170,22 @@ export async function monitorPrices() {
                         }
                     } else {
                         consecutiveRedCandle = 0; // reset if not a red candle
+                        consecutiveGreenCandle++;
+
+                        if(consecutiveGreenCandle >= 3){
+                            sendLogs(`${prefix(market)} 📉 ${market}: Dropping coin. Got consecutive ${consecutiveGreenCandle} green candles while waiting for red candle`);
+                            delete phaseTwoCandidate[market]
+                        }
+
                         if (getNowDate() - entry.startTime > 1000 * 60 * 60 * 10) { // 10 hours
                             sendLogs(`${prefix(market)} 📉 ${market}: Waiting from 10hrs. Total red candle sum < 5%. Dropping coin`);
                             delete phaseTwoCandidate[market]
                         }
 
-                        if(dropPercent <= -4.5 && foundConsecutiveRedCandle){ // Price increased by >= 4.5%
-                            sendLogs(`${prefix(market)} 📉 ${market}:Price increased by ${-dropPercent} while waiting for 2 consecutive red candle`);
-                            delete phaseTwoCandidate[market]
-                        }
+                        // if(dropPercent <= -4.5){ // Price increased by >= 4.5%
+                        //     sendLogs(`${prefix(market)} 📉 ${market}:Price increased by ${-dropPercent} while waiting for 2 consecutive red candle`);
+                        //     delete phaseTwoCandidate[market]
+                        // }
                     }
                 }
             }
