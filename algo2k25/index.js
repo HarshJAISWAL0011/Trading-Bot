@@ -286,7 +286,7 @@ export async function manageBoughtCoins() {
             if (!boughtCoins[market]) continue;
             let profitPercentThreshold = 6;
             let lossPercentThreshold = 8;
-            let { buyPrice, priceHistory } = boughtCoins[market];
+            const { buyPrice, priceHistory } = boughtCoins[market];
 
             priceHistory.push(last_price);
             if (priceHistory.length > 15) priceHistory.shift();
@@ -300,21 +300,24 @@ export async function manageBoughtCoins() {
                 maxPriceReached = Math.max(maxPriceReached, priceHistory[idx])
             }
 
-            let lowestPriceReached = last_price;
+            let lowestPriceReached = -1;
             let startCheck = false;
             for(let idx = 0; idx<priceHistory.length; idx++){
                 if(priceHistory[idx] == maxPriceReached){
                     startCheck = true;
                 }
 
-                if(startCheck && priceHistory[idx] >= buyPrice){
-                    lowestPriceReached = Math.min(lowestPriceReached, priceHistory[idx]) // lowest price still greater than bought price --> close to reach profit threshold, but couldn't
+                if(startCheck && priceHistory[idx] >=( buyPrice +0.02*buyPrice)){ // if profit at some point was >= 2% & then price dec. by 1.5% then set profit threshold to 0
+                    if(lowestPriceReached == -1)
+                        lowestPriceReached = priceHistory[idx]
+                    else
+                        lowestPriceReached = Math.min(lowestPriceReached, priceHistory[idx]) // lowest price still greater than bought price --> close to reach profit threshold, but couldn't
                 }
             }
 
             const profitPercent = ((last_price - buyPrice) / buyPrice) * 100;
             if( getNowDate() - boughtCoins[market].boughtDate > 6 * 60 * 60 * 1000 ||   // --> 6 hrs
-                ((maxPriceReached - lowestPriceReached)/lowestPriceReached)*100 >= 1.5) { // if price decreased by 1.5% from max reached but less than profitPercentThreshold
+                ( (lowestPriceReached != -1 &&  (maxPriceReached - lowestPriceReached)/lowestPriceReached)*100 >= 1.5)) { // if price decreased by 1.5% from max reached but less than profitPercentThreshold
                 profitPercentThreshold = 0;
             }
 
@@ -325,7 +328,7 @@ export async function manageBoughtCoins() {
             }
 
             // Stop loss (≥15% drop in last 3 checks)
-            const lossPercent = (( boughtCoins[market].buyPrice - last_price) /  boughtCoins[market].buyPrice) * 100;
+            const lossPercent = (( buyPrice - last_price) / buyPrice) * 100;
             
             if(getNowDate() - boughtCoins[market].boughtDate >= 4 * 60 * 60 * 1000){
                 lossPercentThreshold -= (getNowDate() - boughtCoins[market].boughtDate) /(2 * 60 * 60 * 1000) // Decrease loss bearing capacity by 1% with every 1.5 hrs
