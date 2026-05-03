@@ -8,6 +8,7 @@ import {getCoinReadyToBuy} from "./short-term.js";
 import { suddenFallAlgo } from "./suddenfall.js";
 import { coinHiked, getTime } from "./hike.js";
 import { monitorPrices, manageBoughtCoins } from "./algo2k25/index.js";
+import { startAdvancedPolling } from "./algo2k26/index.js";
 import fetch from 'node-fetch'; 
 import { sendLogs,runOnce,updatePriceHistoryInFirebase,initializePriceHistoryFromFirebase } from "./firebase.js";
 
@@ -24,7 +25,17 @@ setInterval(keepServerAlive, 5*60*1000); //Make request in every 5 minutes
 // setInterval(manageBoughtCoins, 60*1000); // 1 min
 // setInterval(checkReboundCandidates, 15*60*1000);// 15 min
 
-matchTimeAndStart();
+// matchTimeAndStart();
+startAdvancedPolling({
+    tickerPollMs: 5 * 60 * 1000,
+    candleInterval: "15m",
+    maxMarketsPerPoll: 25,
+    minSignalScore: 94,
+    minVolumeExpansion: 2.0,
+}).catch((err) => {
+    console.error("algo2k26 scheduler error:", err);
+    sendLogs(`algo2k26 scheduler error: ${err.message}`);
+});
 
 async function matchTimeAndStart() {
     const now = new Date();
